@@ -21,6 +21,26 @@ let sampleUsers = [
   },
 ];
 
+function addUser(user) {
+  let transaction = DB.transaction(["users"], "readwrite");
+  let objectStore = transaction.objectStore("users");
+
+  let writeReq = objectStore.add(user);
+
+  writeReq.onerror = function () {
+    showNotification("Find error to add user");
+  };
+
+  writeReq.onsuccess = function () {
+    showNotification("user added successfully");
+    displayAllUsers().then(function (res) {
+      renderUsers(res).catch(function (err) {
+        showNotification(err);
+      });
+    });
+  };
+}
+
 function openDatabase(databaseName) {
   return new Promise(function (resolve, reject) {
     let req = indexedDB.open(databaseName, 3);
@@ -127,8 +147,9 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     const newUser = { id: Date.now(), name, email, role, department };
-    sampleUsers.push(newUser);
-    renderUsers(sampleUsers);
+
+    addUser(newUser);
+
     addUserForm.reset();
     showNotification("User created successfully!", "success");
     const btn = addUserForm.querySelector('button[type="submit"]');
