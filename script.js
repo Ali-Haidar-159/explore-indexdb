@@ -10,35 +10,62 @@ const clearBtn = document.getElementById("clearBtn");
 const usersList = document.getElementById("usersList");
 const notificationArea = document.getElementById("notificationArea");
 
+// Edit modal elements
+const editUserModalEl = document.getElementById("editUserModal");
+const editUserModal = new bootstrap.Modal(editUserModalEl);
+const editUserIdInput = document.getElementById("editUserId");
+const editFullNameInput = document.getElementById("editFullName");
+const editEmailInput = document.getElementById("editEmail");
+const editRoleInput = document.getElementById("editRole");
+const editDepartmentInput = document.getElementById("editDepartment");
+const saveEditBtn = document.getElementById("saveEditBtn");
+
 let DB = null;
-let sampleUsers = [
-  {
-    id: 1,
-    name: "Sumit Saha",
-    email: "sumit@example.com",
-    role: "Developer",
-    department: "Engineering",
-  },
-];
+let users = [];
 
 function addUser(user) {
-  let transaction = DB.transaction(["users"], "readwrite");
-  let objectStore = transaction.objectStore("users");
+  return new Promise(function (resolve, reject) {
+    const transaction = DB.transaction(["users"], "readwrite");
+    const writeReq = transaction.objectStore("users").add(user);
 
-  let writeReq = objectStore.add(user);
+    transaction.oncomplete = resolve;
+    transaction.onerror = function () {
+      reject(transaction.error || writeReq.error);
+    };
+    transaction.onabort = function () {
+      reject(transaction.error || writeReq.error);
+    };
+  });
+}
 
-  writeReq.onerror = function () {
-    showNotification("Find error to add user");
-  };
+function updateUser(user) {
+  return new Promise(function (resolve, reject) {
+    const transaction = DB.transaction(["users"], "readwrite");
+    const writeReq = transaction.objectStore("users").put(user);
 
-  writeReq.onsuccess = function () {
-    showNotification("user added successfully");
-    displayAllUsers().then(function (res) {
-      renderUsers(res).catch(function (err) {
-        showNotification(err);
-      });
-    });
-  };
+    transaction.oncomplete = resolve;
+    transaction.onerror = function () {
+      reject(transaction.error || writeReq.error);
+    };
+    transaction.onabort = function () {
+      reject(transaction.error || writeReq.error);
+    };
+  });
+}
+
+function deleteUser(id) {
+  return new Promise(function (resolve, reject) {
+    const transaction = DB.transaction(["users"], "readwrite");
+    const deleteReq = transaction.objectStore("users").delete(id);
+
+    transaction.oncomplete = resolve;
+    transaction.onerror = function () {
+      reject(transaction.error || deleteReq.error);
+    };
+    transaction.onabort = function () {
+      reject(transaction.error || deleteReq.error);
+    };
+  });
 }
 
 function openDatabase(databaseName) {
@@ -123,17 +150,27 @@ function showNotification(message, type = "info") {
   }, 4000);
 }
 
+/**
+ * Print the user id to the console
+ * @param {number} id - User id
+ */
+function printUserId(id) {
+  console.log("User ID:", id);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   openDatabase("my_db")
     .then(function (result) {
       showNotification(result);
-      displayAllUsers().then(function (res) {
-        renderUsers(res);
-        showNotification("All users showed");
-      });
+      return displayAllUsers();
     })
-    .catch(function (err) {
-      showNotification(err);
+    .then(function (loadedUsers) {
+      users = loadedUsers;
+      renderUsers(users);
+      showNotification("All users showed");
+    })
+    .catch(function (error) {
+      showNotification(error.message || error, "danger");
     });
 
   addUserForm.addEventListener("submit", (e) => {
@@ -148,27 +185,34 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     const newUser = { id: Date.now(), name, email, role, department };
 
-    addUser(newUser);
-
-    addUserForm.reset();
-    showNotification("User created successfully!", "success");
-    const btn = addUserForm.querySelector('button[type="submit"]');
-    const originalText = btn.textContent;
-    btn.textContent = "User Created!";
-    btn.classList.replace("btn-create", "btn-success");
-    setTimeout(() => {
-      btn.textContent = originalText;
-      btn.classList.replace("btn-success", "btn-create");
-    }, 1500);
+    addUser(newUser)
+      .then(() => displayAllUsers())
+      .then((loadedUsers) => {
+        users = loadedUsers;
+        renderUsers(users);
+        addUserForm.reset();
+        showNotification("User created successfully!", "success");
+        const btn = addUserForm.querySelector('button[type="submit"]');
+        const originalText = btn.textContent;
+        btn.textContent = "User Created!";
+        btn.classList.replace("btn-create", "btn-success");
+        setTimeout(() => {
+          btn.textContent = originalText;
+          btn.classList.replace("btn-success", "btn-create");
+        }, 1500);
+      })
+      .catch((error) => {
+        showNotification(error.message || "Failed to add user", "danger");
+      });
   });
 
   searchBtn.addEventListener("click", () => {
     const query = searchInput.value.trim().toLowerCase();
     if (!query) {
-      renderUsers(sampleUsers);
+      renderUsers(users);
       return;
     }
-    const filteredUsers = sampleUsers.filter(
+    const filteredUsers = users.filter(
       (u) =>
         u.email.toLowerCase().includes(query) ||
         u.name.toLowerCase().includes(query),
@@ -178,7 +222,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   clearBtn.addEventListener("click", () => {
     searchInput.value = "";
-    renderUsers(sampleUsers);
+    renderUsers(users);
   });
 
   function renderUsers(users) {
@@ -209,58 +253,71 @@ document.addEventListener("DOMContentLoaded", () => {
             `;
       usersList.appendChild(userCard);
     });
-    attachUserButtonListeners();
   }
 
-  function attachUserButtonListeners() {
-    document.querySelectorAll(".btn-edit").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        const id = parseInt(e.target.dataset.id);
-        const user = sampleUsers.find((u) => u.id === id);
-        if (user) {
-          fullNameInput.value = user.name;
-          emailInput.value = user.email;
-          roleInput.value = user.role;
-          departmentInput.value = user.department;
-          addUserForm.scrollIntoView({ behavior: "smooth" });
-          const submitBtn = addUserForm.querySelector('button[type="submit"]');
-          const originalText = submitBtn.textContent;
-          submitBtn.textContent = "Update User";
-          submitBtn.classList.replace("btn-create", "btn-warning");
-          const newSubmitBtn = submitBtn.cloneNode(true);
-          submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
-          newSubmitBtn.addEventListener(
-            "click",
-            (e) => {
-              e.preventDefault();
-              user.name = fullNameInput.value.trim();
-              user.email = emailInput.value.trim();
-              user.role = roleInput.value.trim();
-              user.department = departmentInput.value.trim();
-              renderUsers(sampleUsers);
-              addUserForm.reset();
+  usersList.addEventListener("click", (e) => {
+    const button = e.target.closest("button[data-id]");
+    if (!button) return;
+
+    const id = Number(button.dataset.id);
+    const user = users.find((item) => item.id === id);
+    if (!user) return;
+
+    if (button.classList.contains("btn-edit")) {
+            printUserId(id);
+            editUserIdInput.value = user.id;
+            editFullNameInput.value = user.name;
+            editEmailInput.value = user.email;
+            editRoleInput.value = user.role;
+            editDepartmentInput.value = user.department;
+            editUserModal.show();
+            return;
+    }
+
+    if (
+            button.classList.contains("btn-delete") &&
+            confirm("Are you sure you want to delete this user?")
+    ) {
+            deleteUser(id)
+              .then(() => displayAllUsers())
+              .then((loadedUsers) => {
+                users = loadedUsers;
+                renderUsers(users);
+                showNotification("User deleted successfully!", "success");
+              })
+              .catch((error) => {
+                showNotification(error.message || "Failed to delete user", "danger");
+              });
+    }
+  });
+
+  saveEditBtn.addEventListener("click", () => {
+    const id = Number(editUserIdInput.value);
+    const user = users.find((item) => item.id === id);
+    const name = editFullNameInput.value.trim();
+    const email = editEmailInput.value.trim();
+    const role = editRoleInput.value.trim();
+    const department = editDepartmentInput.value.trim();
+
+    if (!user) {
+            showNotification("User not found", "warning");
+            return;
+    }
+    if (!name || !email || !role || !department) {
+            showNotification("Please fill in all fields", "warning");
+            return;
+    }
+
+    updateUser({ ...user, name, email, role, department })
+            .then(() => displayAllUsers())
+            .then((loadedUsers) => {
+              users = loadedUsers;
+              renderUsers(users);
+              editUserModal.hide();
               showNotification("User updated successfully!", "success");
-              newSubmitBtn.textContent = originalText;
-              newSubmitBtn.classList.replace("btn-warning", "btn-create");
-            },
-            { once: true },
-          );
-        }
-      });
-    });
-
-    document.querySelectorAll(".btn-delete").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        const id = parseInt(e.target.dataset.id);
-        if (confirm("Are you sure you want to delete this user?")) {
-          const index = sampleUsers.findIndex((u) => u.id === id);
-          if (index !== -1) {
-            sampleUsers.splice(index, 1);
-            renderUsers(sampleUsers);
-            showNotification("User deleted successfully!", "danger");
-          }
-        }
-      });
-    });
-  }
+            })
+            .catch((error) => {
+              showNotification(error.message || "Failed to update user", "danger");
+            });
+  });
 });
